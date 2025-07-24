@@ -10,7 +10,6 @@ import {
   ChartBarIcon,
   BeakerIcon,
   CubeIcon,
-  LightBulbIcon,
   DocumentTextIcon
 } from '@heroicons/react/24/outline';
 import Link from 'next/link';

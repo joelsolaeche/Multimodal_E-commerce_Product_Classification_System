@@ -9,11 +9,10 @@ import {
   ChatBubbleBottomCenterTextIcon,
   SparklesIcon,
   TrophyIcon,
-  ArrowTrendingUpIcon,
   ClockIcon,
   ChartPieIcon
 } from '@heroicons/react/24/outline';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar } from 'recharts';
 import Link from 'next/link';
 
 interface ModelData {
@@ -28,6 +27,8 @@ interface ModelData {
 interface ModelPerformance {
   models: ModelData[];
 }
+
+
 
 export default function PerformancePage() {
   const [performance, setPerformance] = useState<ModelPerformance | null>(null);
@@ -191,15 +192,6 @@ export default function PerformancePage() {
     }
   ];
 
-  const pieData = [
-    { name: 'Multimodal', value: multimodal.accuracy * 100, color: '#8b5cf6' },
-    { name: 'Text Only', value: text.accuracy * 100, color: '#3b82f6' },
-    { name: 'Vision Only', value: vision.accuracy * 100, color: '#10b981' }
-  ];
-
-  const selectedModelData = selectedModel === 'multimodal' ? multimodal : 
-                           selectedModel === 'text' ? text : vision;
-
   const categoryPerformance = [
     { name: 'Electronics', accuracy: 92, count: 15420 },
     { name: 'Home & Garden', accuracy: 88, count: 8930 },
@@ -236,7 +228,8 @@ export default function PerformancePage() {
     }
   ];
 
-  const COLORS = ['#8B5CF6', '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#EC4899'];
+  // Custom tooltip formatter
+  const customTooltipFormatter = (value: number) => [`${value.toFixed(1)}%`, ''];
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
@@ -327,7 +320,7 @@ export default function PerformancePage() {
                       className={`${model.bgColor} rounded-2xl p-6 border ${model.borderColor} hover:shadow-lg transition-all duration-300 cursor-pointer ${
                         selectedModel === model.type ? 'ring-2 ring-blue-500' : ''
                       }`}
-                      onClick={() => setSelectedModel(model.type as any)}
+                      onClick={() => setSelectedModel(model.type)}
                     >
                       <div className={`w-12 h-12 rounded-xl bg-gradient-to-r ${model.color} flex items-center justify-center mb-4`}>
                         <model.icon className="w-6 h-6 text-white" />
@@ -359,7 +352,7 @@ export default function PerformancePage() {
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="name" />
                       <YAxis />
-                      <Tooltip formatter={(value: any) => [`${value.toFixed(1)}%`, '']} />
+                      <Tooltip formatter={customTooltipFormatter} />
                       <Bar dataKey="Multimodal" fill="#8B5CF6" />
                       <Bar dataKey="Text Only" fill="#3B82F6" />
                       <Bar dataKey="Vision Only" fill="#10B981" />
@@ -423,7 +416,7 @@ export default function PerformancePage() {
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis type="number" domain={[0, 100]} />
                   <YAxis dataKey="name" type="category" width={100} />
-                  <Tooltip formatter={(value: any) => [`${value}%`, 'Accuracy']} />
+                  <Tooltip formatter={(value: number) => [`${value}%`, 'Accuracy']} />
                   <Bar dataKey="accuracy" fill="#3B82F6" />
                 </BarChart>
               </ResponsiveContainer>
