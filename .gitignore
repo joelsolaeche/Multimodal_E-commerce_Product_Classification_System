@@ -1,0 +1,333 @@
+# ========================================
+# MULTIMODAL E-COMMERCE PROJECT .GITIGNORE
+# ========================================
+
+# =============================================================================
+# LARGE DATA FILES (Critical - these are huge files that shouldn't be in git)
+# =============================================================================
+
+# Product Data Files (CSV files can be very large)
+data/
+!data/.gitkeep
+data/processed_products_with_images.csv
+data/Raw/
+data/images/
+data/*.csv
+data/*.json
+data/*.parquet
+
+# Pre-computed Embeddings (These are massive files)
+Embeddings/
+!Embeddings/.gitkeep
+*.embedding
+*.embeddings
+*_embeddings.csv
+*_embeddings.pkl
+
+# Model Files and Weights
+models/
+*.h5
+*.pkl
+*.joblib
+*.model
+*.ckpt
+*.pt
+*.pth
+*.safetensors
+
+# =============================================================================
+# FRONTEND - NEXT.JS SPECIFIC
+# =============================================================================
+
+# Next.js build output
+multimodal-ecommerce-demo/.next/
+multimodal-ecommerce-demo/out/
+multimodal-ecommerce-demo/build/
+multimodal-ecommerce-demo/dist/
+
+# Next.js cache
+multimodal-ecommerce-demo/.next
+
+# Next.js static exports
+multimodal-ecommerce-demo/out
+
+# Vercel deployment
+multimodal-ecommerce-demo/.vercel
+
+# =============================================================================
+# NODE.JS / NPM / YARN
+# =============================================================================
+
+# Dependencies
+node_modules/
+multimodal-ecommerce-demo/node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Package manager lock files (exclude these - they're heavy)
+package-lock.json
+yarn.lock
+
+# NPM cache
+.npm
+
+# Yarn cache
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+.pnp.*
+
+# =============================================================================
+# PYTHON SPECIFIC
+# =============================================================================
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# Virtual environments
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+.venv/
+multimodal_env/
+
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# =============================================================================
+# JUPYTER NOTEBOOKS
+# =============================================================================
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints
+*/.ipynb_checkpoints/*
+
+# JupyterLab settings
+.jupyter/
+
+# =============================================================================
+# MACHINE LEARNING / DATA SCIENCE
+# =============================================================================
+
+# MLflow
+mlruns/
+.mlruns/
+
+# Weights & Biases
+wandb/
+
+# TensorBoard logs
+logs/
+tensorboard_logs/
+
+# Experiment results
+results/
+experiments/
+outputs/
+
+# Temporary ML files
+*.tmp
+*.temp
+
+# =============================================================================
+# ENVIRONMENT VARIABLES & SECRETS
+# =============================================================================
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.environment
+
+# API keys and secrets
+secrets/
+*.secret
+*.key
+config/secrets.py
+
+# =============================================================================
+# DEVELOPMENT TOOLS
+# =============================================================================
+
+# VS Code
+.vscode/
+.history/
+
+# PyCharm
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Sublime Text
+*.sublime-workspace
+*.sublime-project
+
+# Vim
+*.swp
+*.swo
+*~
+
+# =============================================================================
+# OPERATING SYSTEM
+# =============================================================================
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Linux
+*~
+
+# =============================================================================
+# LOGS AND TEMPORARY FILES
+# =============================================================================
+
+# Log files
+*.log
+logs/
+*.out
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+
+# =============================================================================
+# BUILD AND DEPLOYMENT
+# =============================================================================
+
+# Docker
+.dockerignore
+
+# Terraform
+*.tfstate
+*.tfstate.*
+.terraform/
+
+# =============================================================================
+# SPECIFIC PROJECT FILES TO KEEP
+# =============================================================================
+
+# Keep important documentation
+!README.md
+!DEPLOYMENT.md
+!LICENSE
+
+# Keep configuration files
+!package.json
+!requirements*.txt
+!tailwind.config.js
+!next.config.js
+!tsconfig.json
+
+# Keep source code
+!src/
+!multimodal-ecommerce-demo/src/
+!tests/
+
+# Keep essential scripts
+!api_server.py
+!setup.py
+
+# =============================================================================
+# ADDITIONAL EXCLUSIONS
+# =============================================================================
+
+# Large image/media files
+*.mp4
+*.avi
+*.mov
+*.wmv
+*.flv
+*.webm
+*.mkv
+
+# Archive files
+*.zip
+*.tar.gz
+*.rar
+*.7z
+
+# Large text files that might be datasets
+*.txt.gz
+*.csv.gz
+*.json.gz
+
+# Backup files
+*.bak
+*.backup
+*~ 
