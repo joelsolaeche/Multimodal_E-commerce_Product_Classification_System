@@ -4,18 +4,10 @@
   "devCommand": "npm run dev",
   "installCommand": "npm install",
   "outputDirectory": ".next",
-  "env": {
-    "NEXT_PUBLIC_API_URL": "@api-url"
-  },
-  "functions": {
-    "app/**": {
-      "maxDuration": 30
-    }
-  },
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "$NEXT_PUBLIC_API_URL/api/$1"
+      "destination": "https://multimodale-commerceproductclassificationsys-production.up.railway.app/api/$1"
     }
   ]
 } 
