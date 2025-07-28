@@ -27,14 +27,11 @@ FROM base as production
 COPY api_server.py /app/
 COPY src/ /app/src/
 
-# CRITICAL: Bundle all necessary data files for production
-# Create data structure and copy essential files
-RUN mkdir -p /app/data/Raw /app/Embeddings
-
-# CRITICAL: Bundle essential data files for production
-# Copy only small essential files (categories.json)
-COPY data/Raw/ /app/data/Raw/
-# Large embedding files are handled with mock data in production via load_data() function
+# CRITICAL: Create necessary directories for data files
+# In production, we use mock data so we just need to create the directory structure
+RUN mkdir -p /app/data/Raw /app/data/images /app/Embeddings
+# Note: No need to copy data files as we use mock data in production environment
+# The api_server.py is designed to detect Railway and use mock data
 
 # Copy startup script
 COPY start.sh /app/start.sh
