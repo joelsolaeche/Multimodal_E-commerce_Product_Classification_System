@@ -1,152 +1,209 @@
-# 🚀 Deployment Guide - Multimodal E-commerce AI Demo
+# Real Data Deployment Guide
 
-This guide will help you deploy both the **Next.js frontend** and **FastAPI backend** to showcase your multimodal AI system.
+This guide explains how to deploy your multimodal e-commerce application with real data using Railway's PostgreSQL and optional cloud storage.
 
-## 🎯 Architecture Overview
+## Option 1: PostgreSQL on Railway (Recommended)
 
-```
-Frontend (Next.js)     Backend (FastAPI)
-     ↓                      ↓
-   Vercel              Railway/Render
-     ↓                      ↓
-User Interface  ←→  AI Classification API
-```
+### Step 1: Create PostgreSQL Database on Railway
 
-## 📋 Prerequisites
+1. Log into [Railway](https://railway.app)
+2. Click "New Project" → "Database" → "PostgreSQL"
+3. Wait for provisioning to complete
+4. Click on your database to view connection details
 
-- GitHub account
-- Vercel account (free)
-- Railway account (free) OR Render account (free)
+### Step 2: Convert CSV to PostgreSQL Tables
 
-## 🔧 Option 1: Vercel + Railway (Recommended)
+Create a script to import your product data:
 
-### **Step 1: Deploy Backend to Railway**
+```python
+# import_data_to_postgres.py
+import os
+import pandas as pd
+from sqlalchemy import create_engine
 
-1. **Create Railway Account**: Go to [railway.app](https://railway.app)
+# Railway PostgreSQL connection string (from environment variables)
+DATABASE_URL = os.environ.get("DATABASE_URL")
 
-2. **Deploy from GitHub**:
-   - Click "New Project" → "Deploy from GitHub repo"
-   - Select your `multimodal-ecommerce-ai-demo` repository
-   - Railway will auto-detect Python/FastAPI
+# Create SQLAlchemy engine
+engine = create_engine(DATABASE_URL)
 
-3. **Configure Environment**:
-   - Railway will automatically set `RAILWAY_ENVIRONMENT=true`
-   - Your backend will use mock data (perfect for demo)
+# Load product data
+print("Loading product data...")
+products_df = pd.read_csv('data/processed_products_with_images.csv')
 
-4. **Get Your API URL**:
-   - After deployment, Railway will provide a URL like: `https://your-app.railway.app`
-   - Copy this URL - you'll need it for frontend
+# Write to PostgreSQL
+print("Writing to PostgreSQL...")
+products_df.to_sql('products', engine, if_exists='replace', index=False)
 
-### **Step 2: Deploy Frontend to Vercel**
+# Optional: Load smaller embedding files
+# For example, if you have a subset of embeddings that fit in Railway's free tier
+try:
+    print("Loading text embeddings sample...")
+    # Load a sample/subset of embeddings that fits within Railway limits
+    text_embeddings_sample = pd.read_csv('Embeddings/text_embeddings_minilm.csv', nrows=5000)
+    text_embeddings_sample.to_sql('text_embeddings', engine, if_exists='replace', index=False)
+    print(f"Uploaded {len(text_embeddings_sample)} text embeddings")
+except Exception as e:
+    print(f"Error loading text embeddings: {str(e)}")
 
-1. **Create Vercel Account**: Go to [vercel.com](https://vercel.com)
-
-2. **Deploy from GitHub**:
-   - Click "New Project" → Import your GitHub repo
-   - Select the `multimodal-ecommerce-demo` folder as root directory
-
-3. **Configure Environment Variables**:
-   - In Vercel dashboard → Settings → Environment Variables
-   - Add: `NEXT_PUBLIC_API_URL` = `https://your-railway-backend-url.railway.app`
-
-4. **Deploy**:
-   - Vercel will automatically build and deploy your Next.js app
-   - You'll get a URL like: `https://your-frontend.vercel.app`
-
-## 🔧 Option 2: All-in-One Railway Deployment
-
-1. **Deploy to Railway**:
-   - Create new project from your GitHub repo
-   - Railway will detect both frontend and backend
-
-2. **Configure Build**:
-   - Set build command: `cd multimodal-ecommerce-demo && npm install && npm run build`
-   - Set start command: `python api_server.py & cd multimodal-ecommerce-demo && npm start`
-
-## 🌐 Option 3: Render Deployment
-
-### **Backend on Render**:
-1. Go to [render.com](https://render.com)
-2. New Web Service → Connect GitHub repo
-3. Runtime: Python 3.11
-4. Build Command: `pip install -r requirements-api.txt`
-5. Start Command: `python api_server.py`
-
-### **Frontend on Render**:
-1. New Static Site → Connect GitHub repo
-2. Build Command: `cd multimodal-ecommerce-demo && npm install && npm run build`
-3. Publish Directory: `multimodal-ecommerce-demo/.next`
-
-## ⚙️ Environment Variables
-
-### **Backend** (Railway/Render):
-```
-RAILWAY_ENVIRONMENT=true  # Auto-set by Railway
-RENDER=true              # Auto-set by Render
-PORT=8000               # Auto-set by platform
+print("Data import completed!")
 ```
 
-### **Frontend** (Vercel):
+### Step 3: Update API Server to Use PostgreSQL
+
+Modify `api_server.py` to connect to PostgreSQL instead of loading CSV files:
+
+```python
+# Add to imports
+from sqlalchemy import create_engine
+from sqlalchemy.sql import text
+
+# In load_data function:
+def load_data():
+    """Load all necessary data files"""
+    global product_data, text_embeddings_data, vision_embeddings_data, categories_data, model_performance, tfidf_vectorizer, tfidf_matrix
+    
+    try:
+        logger.info("Loading product data...")
+        
+        # CRITICAL: Environment-aware detection for Railway
+        is_production = (
+            os.environ.get('RAILWAY_ENVIRONMENT') or 
+            os.environ.get('RENDER') or 
+            os.environ.get('ENVIRONMENT') == 'production'
+        )
+        
+        if is_production:
+            # Connect to PostgreSQL in production
+            database_url = os.environ.get("DATABASE_URL")
+            if database_url:
+                logger.info("Connecting to PostgreSQL database")
+                engine = create_engine(database_url)
+                
+                # Load products from database
+                product_data = pd.read_sql("SELECT * FROM products LIMIT 5000", engine)
+                logger.info(f"Loaded {len(product_data)} products from PostgreSQL")
+                
+                # Load embeddings from database (if available)
+                try:
+                    text_embeddings_data = pd.read_sql("SELECT * FROM text_embeddings LIMIT 5000", engine)
+                    logger.info(f"Loaded {len(text_embeddings_data)} text embeddings from PostgreSQL")
+                except:
+                    logger.warning("Text embeddings table not found in database")
+                    text_embeddings_data = None
+                
+                # Load categories from products
+                if product_data is not None:
+                    categories_data = {}
+                    # Try to load categories from database or extract from products
+                    try:
+                        categories_df = pd.read_sql("SELECT * FROM categories", engine)
+                        categories_data = dict(zip(categories_df['id'], categories_df['name']))
+                    except:
+                        # Extract unique categories from products
+                        unique_categories = product_data['class_id'].unique()
+                        categories_data = {cat: f"Category {cat}" for cat in unique_categories}
+                    
+                    logger.info(f"Loaded {len(categories_data)} categories")
+            else:
+                logger.warning("DATABASE_URL not found, using mock data")
+                # Fall back to mock data (existing code)
+                # ...
 ```
-NEXT_PUBLIC_API_URL=https://your-backend-url.com
+
+### Step 4: Update Railway Environment Variables
+
+In your Railway project:
+1. Go to your API service → Variables
+2. Add the PostgreSQL connection string (Railway auto-generates this)
+3. Add any other required environment variables
+
+## Option 2: Cloud Storage for Large Files
+
+For embedding files too large for PostgreSQL free tier:
+
+### Step 1: Set Up Google Cloud Storage
+
+1. Create a [Google Cloud account](https://cloud.google.com)
+2. Create a new bucket in Google Cloud Storage
+3. Upload your large embedding files
+4. Set up authentication (service account key)
+
+### Step 2: Add Code to Download Embeddings On-Demand
+
+```python
+# Add to imports
+from google.cloud import storage
+
+# Function to download embeddings from GCS
+def download_embeddings_from_gcs(bucket_name, source_blob_name, destination_file_name):
+    """Downloads embeddings file from GCS to local file system"""
+    try:
+        # Initialize GCS client
+        storage_client = storage.Client()
+        bucket = storage_client.bucket(bucket_name)
+        blob = bucket.blob(source_blob_name)
+        
+        # Download file
+        blob.download_to_filename(destination_file_name)
+        logger.info(f"Downloaded {source_blob_name} to {destination_file_name}")
+        return True
+    except Exception as e:
+        logger.error(f"Error downloading from GCS: {str(e)}")
+        return False
+
+# In load_data function, add:
+if is_production and not os.path.exists('Embeddings/text_embeddings_minilm.csv'):
+    # Download embeddings from GCS if needed
+    gcs_bucket = os.environ.get("GCS_BUCKET_NAME")
+    if gcs_bucket:
+        logger.info("Downloading embeddings from Google Cloud Storage")
+        os.makedirs('Embeddings', exist_ok=True)
+        download_embeddings_from_gcs(
+            gcs_bucket, 
+            "text_embeddings_minilm.csv", 
+            "Embeddings/text_embeddings_minilm.csv"
+        )
 ```
 
-## 🎉 Demo Features in Production
+## Recommended Approach for Railway Free Tier
 
-Your deployed demo will showcase:
+Given Railway's free tier limitations:
 
-- ✅ **Interactive Classification**: Upload images and enter text
-- ✅ **Real-time Predictions**: Using TF-IDF and similarity search
-- ✅ **Performance Analytics**: Charts showing model comparisons
-- ✅ **Model Explorer**: 12+ ML architectures with metrics
-- ✅ **Professional UI**: Responsive design with animations
-- ✅ **Mock Data**: 1000 demo products across 10 categories
+1. **Store product data (18MB) in PostgreSQL**
+2. **Store a subset of embeddings in PostgreSQL**
+3. **Implement on-demand loading of full embeddings**
+4. **Use caching to improve performance**
 
-## 🔗 Post-Deployment
+## Deployment Steps
 
-1. **Test Your Demo**:
-   - Visit your frontend URL
-   - Try image classification
-   - Test text classification
-   - Check performance charts
+1. **Prepare your data:**
+   ```bash
+   # Run locally to upload data to PostgreSQL
+   export DATABASE_URL="postgresql://postgres:password@localhost:5432/postgres"
+   python import_data_to_postgres.py
+   ```
 
-2. **Update README**:
-   - Add live demo links
-   - Update with deployment URLs
+2. **Deploy to Railway:**
+   ```bash
+   # Push your code to GitHub
+   git add .
+   git commit -m "Update for PostgreSQL integration"
+   git push
+   
+   # Railway will automatically deploy
+   ```
 
-3. **Share Your Work**:
-   - Portfolio websites
-   - LinkedIn posts
-   - GitHub repository description
+3. **Verify deployment:**
+   ```bash
+   # Test your API endpoints
+   curl https://your-app-name.railway.app/health
+   ```
 
-## 🛠️ Troubleshooting
+## Scaling Beyond Free Tier
 
-### **Common Issues**:
+When you're ready to scale:
 
-1. **CORS Errors**: Backend automatically allows all origins for demo
-2. **API Not Found**: Check `NEXT_PUBLIC_API_URL` environment variable
-3. **Build Failures**: Ensure all dependencies are in requirements files
-4. **Memory Issues**: Platforms have memory limits, mock data keeps it light
-
-### **Logs**:
-- **Railway**: View logs in Railway dashboard
-- **Vercel**: View function logs in Vercel dashboard
-- **Render**: View logs in Render dashboard
-
-## 💡 Pro Tips
-
-1. **Custom Domain**: Both Vercel and Railway support custom domains
-2. **Monitoring**: Use built-in platform monitoring
-3. **Scaling**: Upgrade to paid plans for better performance
-4. **Analytics**: Add Google Analytics to track demo usage
-
-## 🎯 Expected Performance
-
-- **Frontend**: Lightning fast on Vercel's CDN
-- **Backend**: ~500ms response time for classifications
-- **Uptime**: 99.9% on both platforms
-- **Cost**: $0 on free tiers (perfect for portfolio demos)
-
----
-
-🚀 **Ready to deploy?** Follow the steps above and your multimodal AI demo will be live within 10 minutes! 
+1. Upgrade to Railway's hobby tier for more PostgreSQL storage
+2. Consider using pgvector extension for vector similarity search
+3. Implement proper caching and pagination for large datasets 

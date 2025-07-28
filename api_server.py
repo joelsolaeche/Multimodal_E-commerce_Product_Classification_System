@@ -20,6 +20,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn
 from PIL import Image
+from sqlalchemy import create_engine, text
 
 # Configure structured logging
 logger = structlog.get_logger()
@@ -33,6 +34,7 @@ categories_data = None
 model_performance = None
 tfidf_vectorizer = None
 tfidf_matrix = None
+db_engine = None
 
 # Pydantic models
 class TextClassificationRequest(BaseModel):
@@ -44,7 +46,7 @@ class MultimodalClassificationRequest(BaseModel):
 
 def load_data():
     """Load all necessary data files"""
-    global product_data, embeddings_data, text_embeddings_data, vision_embeddings_data, categories_data, model_performance, tfidf_vectorizer, tfidf_matrix
+    global product_data, embeddings_data, text_embeddings_data, vision_embeddings_data, categories_data, model_performance, tfidf_vectorizer, tfidf_matrix, db_engine
     
     try:
         logger.info("Loading product data...")
@@ -58,78 +60,65 @@ def load_data():
         )
         
         if is_production:
-            logger.info("Production environment detected, using mock data for demo")
-            # Create mock product data for demo
-            import random
+            # Check if DATABASE_URL is available for PostgreSQL
+            database_url = os.environ.get('DATABASE_URL')
             
-            # Mock categories for demo
-            mock_categories = {
-                "abcat0100000": "TV & Home Theater",
-                "abcat0500000": "Computers & Tablets", 
-                "abcat0400000": "Cameras & Camcorders",
-                "abcat0200000": "Video Games",
-                "abcat0300000": "Cell Phones",
-                "abcat0600000": "Audio",
-                "abcat0700000": "Appliances",
-                "abcat0800000": "Sports & Recreation",
-                "abcat0900000": "Health & Beauty",
-                "abcat1000000": "Home & Garden"
-            }
-            categories_data = mock_categories
-            
-            # Create mock product data
-            products = []
-            for i in range(1000):  # 1000 mock products for demo
-                category_id = random.choice(list(mock_categories.keys()))
-                products.append({
-                    'sku': f'DEMO{i:06d}',
-                    'name': f'Demo Product {i+1} - {mock_categories[category_id]}',
-                    'description': f'This is a demo product for {mock_categories[category_id]} category. Features include high quality, great performance, and excellent value for money.',
-                    'class_id': category_id,
-                    'price': random.uniform(50, 2000),
-                    'image': f'https://via.placeholder.com/300x300?text=Product+{i+1}'
-                })
-            
-            product_data = pd.DataFrame(products)
-            logger.info(f"Created {len(product_data)} mock products for demo")
-            
-            # Create mock embeddings data
-            text_embeddings_data = pd.DataFrame({
-                'sku': product_data['sku'],
-                'class_id': product_data['class_id'],
-                **{f'embedding_{j}': [random.random() for _ in range(len(product_data))] for j in range(384)}  # MiniLM dimension
-            })
-            
-            vision_embeddings_data = pd.DataFrame({
-                'sku': product_data['sku'], 
-                'class_id': product_data['class_id'],
-                **{f'feature_{j}': [random.random() for _ in range(len(product_data))] for j in range(2048)}  # ResNet50 dimension
-            })
-            
-            logger.info("Created mock embeddings for demo")
-            
+            if database_url:
+                logger.info("Production environment with PostgreSQL detected")
+                
+                # Create SQLAlchemy engine
+                db_engine = create_engine(database_url)
+                
+                try:
+                    # Load products from database
+                    logger.info("Loading products from PostgreSQL")
+                    product_data = pd.read_sql("SELECT * FROM products LIMIT 5000", db_engine)
+                    logger.info(f"Loaded {len(product_data)} products from PostgreSQL")
+                    
+                    # Load categories from database
+                    try:
+                        logger.info("Loading categories from PostgreSQL")
+                        categories_df = pd.read_sql("SELECT * FROM categories", db_engine)
+                        categories_data = dict(zip(categories_df['id'], categories_df['name']))
+                        logger.info(f"Loaded {len(categories_data)} categories from PostgreSQL")
+                    except Exception as e:
+                        logger.warning(f"Error loading categories from PostgreSQL: {str(e)}")
+                        # Extract categories from products as fallback
+                        if product_data is not None:
+                            unique_categories = product_data['class_id'].unique()
+                            categories_data = {cat: f"Category {cat}" for cat in unique_categories}
+                            logger.info(f"Created {len(categories_data)} categories from products")
+                    
+                    # Load text embeddings from database
+                    try:
+                        logger.info("Loading text embeddings from PostgreSQL")
+                        text_embeddings_data = pd.read_sql("SELECT * FROM text_embeddings LIMIT 5000", db_engine)
+                        logger.info(f"Loaded {len(text_embeddings_data)} text embeddings from PostgreSQL")
+                    except Exception as e:
+                        logger.warning(f"Error loading text embeddings from PostgreSQL: {str(e)}")
+                        text_embeddings_data = None
+                    
+                    # Load vision embeddings from database
+                    try:
+                        logger.info("Loading vision embeddings from PostgreSQL")
+                        vision_embeddings_data = pd.read_sql("SELECT * FROM vision_embeddings LIMIT 5000", db_engine)
+                        logger.info(f"Loaded {len(vision_embeddings_data)} vision embeddings from PostgreSQL")
+                    except Exception as e:
+                        logger.warning(f"Error loading vision embeddings from PostgreSQL: {str(e)}")
+                        vision_embeddings_data = None
+                        
+                except Exception as e:
+                    logger.error(f"Error loading data from PostgreSQL: {str(e)}")
+                    logger.info("Falling back to mock data")
+                    # Fall back to mock data
+                    create_mock_data()
+            else:
+                logger.info("Production environment detected, using mock data (no DATABASE_URL)")
+                create_mock_data()
         else:
             # Original data loading for local development
-            # Load main product data
-            if os.path.exists('data/processed_products_with_images.csv'):
-                product_data = pd.read_csv('data/processed_products_with_images.csv').head(5000)  # Limit for performance
-                logger.info(f"Loaded {len(product_data)} products")
-            
-            # Load categories mapping
-            if os.path.exists('data/Raw/categories.json'):
-                with open('data/Raw/categories.json', 'r') as f:
-                    categories_list = json.load(f)
-                    categories_data = {cat['id']: cat['name'] for cat in categories_list}
-                    logger.info(f"Loaded {len(categories_data)} categories")
-            
-            # Load pre-computed embeddings (limit for performance)
-            if os.path.exists('Embeddings/text_embeddings_minilm.csv'):
-                text_embeddings_data = pd.read_csv('Embeddings/text_embeddings_minilm.csv').head(5000)
-                logger.info(f"Loaded text embeddings for {len(text_embeddings_data)} products")
-            
-            if os.path.exists('Embeddings/Embeddings_resnet50.csv'):
-                vision_embeddings_data = pd.read_csv('Embeddings/Embeddings_resnet50.csv').head(5000)
-                logger.info(f"Loaded vision embeddings for {len(vision_embeddings_data)} products")
+            logger.info("Local development environment detected")
+            load_local_data()
         
         # Create TF-IDF for text classification (works with both real and mock data)
         if product_data is not None:
@@ -173,6 +162,83 @@ def load_data():
     except Exception as e:
         logger.error(f"Error loading data: {str(e)}")
         # Don't raise exception to allow server to start
+
+def create_mock_data():
+    """Create mock data for demo purposes"""
+    global product_data, text_embeddings_data, vision_embeddings_data, categories_data
+    
+    import random
+    
+    # Mock categories for demo
+    mock_categories = {
+        "abcat0100000": "TV & Home Theater",
+        "abcat0500000": "Computers & Tablets", 
+        "abcat0400000": "Cameras & Camcorders",
+        "abcat0200000": "Video Games",
+        "abcat0300000": "Cell Phones",
+        "abcat0600000": "Audio",
+        "abcat0700000": "Appliances",
+        "abcat0800000": "Sports & Recreation",
+        "abcat0900000": "Health & Beauty",
+        "abcat1000000": "Home & Garden"
+    }
+    categories_data = mock_categories
+    
+    # Create mock product data
+    products = []
+    for i in range(1000):  # 1000 mock products for demo
+        category_id = random.choice(list(mock_categories.keys()))
+        products.append({
+            'sku': f'DEMO{i:06d}',
+            'name': f'Demo Product {i+1} - {mock_categories[category_id]}',
+            'description': f'This is a demo product for {mock_categories[category_id]} category. Features include high quality, great performance, and excellent value for money.',
+            'class_id': category_id,
+            'price': random.uniform(50, 2000),
+            'image': f'https://via.placeholder.com/300x300?text=Product+{i+1}'
+        })
+    
+    product_data = pd.DataFrame(products)
+    logger.info(f"Created {len(product_data)} mock products for demo")
+    
+    # Create mock embeddings data
+    text_embeddings_data = pd.DataFrame({
+        'sku': product_data['sku'],
+        'class_id': product_data['class_id'],
+        **{f'embedding_{j}': [random.random() for _ in range(len(product_data))] for j in range(384)}  # MiniLM dimension
+    })
+    
+    vision_embeddings_data = pd.DataFrame({
+        'sku': product_data['sku'], 
+        'class_id': product_data['class_id'],
+        **{f'feature_{j}': [random.random() for _ in range(len(product_data))] for j in range(2048)}  # ResNet50 dimension
+    })
+    
+    logger.info("Created mock embeddings for demo")
+
+def load_local_data():
+    """Load data from local files for development"""
+    global product_data, text_embeddings_data, vision_embeddings_data, categories_data
+    
+    # Load main product data
+    if os.path.exists('data/processed_products_with_images.csv'):
+        product_data = pd.read_csv('data/processed_products_with_images.csv').head(5000)  # Limit for performance
+        logger.info(f"Loaded {len(product_data)} products")
+    
+    # Load categories mapping
+    if os.path.exists('data/Raw/categories.json'):
+        with open('data/Raw/categories.json', 'r') as f:
+            categories_list = json.load(f)
+            categories_data = {cat['id']: cat['name'] for cat in categories_list}
+            logger.info(f"Loaded {len(categories_data)} categories")
+    
+    # Load pre-computed embeddings (limit for performance)
+    if os.path.exists('Embeddings/text_embeddings_minilm.csv'):
+        text_embeddings_data = pd.read_csv('Embeddings/text_embeddings_minilm.csv').head(5000)
+        logger.info(f"Loaded text embeddings for {len(text_embeddings_data)} products")
+    
+    if os.path.exists('Embeddings/Embeddings_resnet50.csv'):
+        vision_embeddings_data = pd.read_csv('Embeddings/Embeddings_resnet50.csv').head(5000)
+        logger.info(f"Loaded vision embeddings for {len(vision_embeddings_data)} products")
 
 def find_similar_products_by_text(text: str, top_k: int = 5) -> List[Dict]:
     """Find similar products using text embeddings or TF-IDF"""
