@@ -1,13 +1,10 @@
-# Use the official Python 3.9.6 image from DockerHub
-FROM python:3.9.6-slim
+# Multi-stage Railway-optimized Dockerfile
+FROM python:3.9-slim as base
 
-# Set the working directory in the container
+# Set working directory
 WORKDIR /app
 
-# Copy the requirements file into the container
-COPY requirements.txt .
-
-# Install necessary system packages for h5py and TensorFlow
+# Install system dependencies for ML libraries
 RUN apt-get update && apt-get install -y \
     build-essential \
     pkg-config \
@@ -16,24 +13,43 @@ RUN apt-get update && apt-get install -y \
     libjpeg-dev \
     liblapack-dev \
     libblas-dev \
-    gfortran
+    gfortran \
+    && rm -rf /var/lib/apt/lists/*
 
-# Install pip 21.2.3
-RUN pip install --upgrade pip==21.2.3
+# CRITICAL: Copy requirements FIRST for layer caching optimization
+COPY requirements-api.txt /app/requirements.txt
+RUN pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt
 
-RUN pip install -r requirements.txt
+# Production stage
+FROM base as production
 
-# Install Jupyter Notebook
-RUN pip install jupyter
+# Copy application files
+COPY api_server.py /app/
+COPY src/ /app/src/
 
-# Copy the entire project into the container
-COPY . .
+# CRITICAL: Bundle all necessary data files for production
+# Create data structure and copy essential files
+RUN mkdir -p /app/data/Raw /app/Embeddings
 
-# Expose port 8888 for Jupyter Notebook
-EXPOSE 8888
+# CRITICAL: Bundle essential data files for production
+# Copy only small essential files (categories.json)
+COPY data/Raw/ /app/data/Raw/
+# Large embedding files are handled with mock data in production via load_data() function
+
+# Copy startup script
+COPY start.sh /app/start.sh
+RUN chmod +x /app/start.sh
+
+# MANDATORY: Use Railway's dynamic PORT
+EXPOSE $PORT
 
 # Set environment variable to prevent Python from buffering output
 ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/app
 
-# Set the default command to start Jupyter Notebook
-CMD ["jupyter", "notebook", "--ip=0.0.0.0", "--port=8888", "--no-browser", "--allow-root"]
+# REQUIRED: Health check for monitoring
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+  CMD python3 -c "import requests; requests.get('http://localhost:${PORT:-8000}/health', timeout=5)" || exit 1
+
+# Use startup script
+CMD ["/app/start.sh"]

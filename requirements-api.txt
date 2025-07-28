@@ -21,4 +21,5 @@ structlog==23.2.0
 
 # Development
 pytest==8.3.4
-httpx==0.28.1  # For API testing 
+httpx==0.28.1  # For API testing
+requests==2.32.3  # For health checks 

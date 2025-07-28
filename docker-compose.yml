@@ -1,0 +1,35 @@
+# Local Development - Multi-Service Architecture
+version: "3.8"
+
+services:
+  # Main application service
+  app:
+    build: 
+      context: .
+      dockerfile: Dockerfile.dev
+    ports:
+      - "8000:8000"
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - ENVIRONMENT=development
+      - PYTHONPATH=/app
+    volumes:
+      - ./:/app
+      - ./data:/app/data
+      - ./Embeddings:/app/Embeddings
+    depends_on:
+      - redis
+    command: uvicorn api_server:app --host 0.0.0.0 --port 8000 --reload
+  
+  # Redis for caching (optional for this app, but good practice)
+  redis:
+    image: "redis:alpine"
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+
+volumes:
+  redis_data: 

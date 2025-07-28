@@ -49,8 +49,13 @@ def load_data():
     try:
         logger.info("Loading product data...")
         
-        # Check if we're in production/deployment environment
-        is_production = os.environ.get('RAILWAY_ENVIRONMENT') or os.environ.get('RENDER') or not os.path.exists('data/')
+        # CRITICAL: Environment-aware detection for Railway
+        is_production = (
+            os.environ.get('RAILWAY_ENVIRONMENT') or 
+            os.environ.get('RENDER') or 
+            os.environ.get('ENVIRONMENT') == 'production' or
+            not os.path.exists('data/')
+        )
         
         if is_production:
             logger.info("Production environment detected, using mock data for demo")
@@ -344,6 +349,46 @@ app.add_middleware(
 @app.get("/")
 async def root():
     return {"message": "Multimodal E-commerce AI API", "status": "running"}
+
+@app.get("/health", include_in_schema=False)
+def health_check():
+    """CRITICAL: Railway deployment health monitoring"""
+    try:
+        # Check if global data is loaded
+        data_status = "loaded" if product_data is not None else "not loaded"
+        
+        # Check model availability
+        model_status = "loaded" if tfidf_vectorizer is not None else "not loaded"
+        
+        # Check categories data
+        categories_status = "loaded" if categories_data is not None else "not loaded"
+        
+        # Overall health status
+        overall_status = "healthy" if all([
+            product_data is not None,
+            categories_data is not None,
+            tfidf_vectorizer is not None
+        ]) else "degraded"
+        
+        return {
+            "status": overall_status,
+            "service": "multimodal-ecommerce-api",
+            "version": "1.0.0",
+            "data": data_status,
+            "ml_model": model_status,
+            "categories": categories_status,
+            "environment": os.environ.get('RAILWAY_ENVIRONMENT', 'local'),
+            "port": os.environ.get('PORT', '8000')
+        }
+        
+    except Exception as e:
+        logger.error(f"Health check failed: {str(e)}")
+        return {
+            "status": "unhealthy",
+            "service": "multimodal-ecommerce-api",
+            "error": str(e),
+            "version": "1.0.0"
+        }
 
 @app.get("/api/stats")
 async def get_stats():
