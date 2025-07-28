@@ -39,7 +39,8 @@ export default function DemoPage() {
   const [loading, setLoading] = useState(false);
   
   // Use environment variable or fallback to Railway URL
-  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://multimodale-commerceproductclassificationsys-production.up.railway.app';
+  // Ensure URL has no trailing slash to prevent double-slash issues
+  const API_URL = (process.env.NEXT_PUBLIC_API_URL || 'https://multimodale-commerceproductclassificationsys-production.up.railway.app').replace(/\/$/, '');
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -63,6 +64,11 @@ export default function DemoPage() {
         },
         body: JSON.stringify({ text }),
       });
+      
+      if (!response.ok) {
+        throw new Error(`Server responded with status: ${response.status}`);
+      }
+      
       const result = await response.json();
       setResults(result);
     } catch (error) {
@@ -84,6 +90,11 @@ export default function DemoPage() {
         method: 'POST',
         body: formData,
       });
+      
+      if (!response.ok) {
+        throw new Error(`Server responded with status: ${response.status}`);
+      }
+      
       const result = await response.json();
       setResults(result);
     } catch (error) {
@@ -110,6 +121,11 @@ export default function DemoPage() {
             },
             body: JSON.stringify(payload),
           });
+          
+          if (!response.ok) {
+            throw new Error(`Server responded with status: ${response.status}`);
+          }
+          
           const result = await response.json();
           setResults(result);
           setLoading(false);
@@ -123,6 +139,11 @@ export default function DemoPage() {
           },
           body: JSON.stringify(payload),
         });
+        
+        if (!response.ok) {
+          throw new Error(`Server responded with status: ${response.status}`);
+        }
+        
         const result = await response.json();
         setResults(result);
         setLoading(false);

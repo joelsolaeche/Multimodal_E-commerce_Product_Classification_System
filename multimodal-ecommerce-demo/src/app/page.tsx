@@ -25,6 +25,10 @@ interface Stats {
 export default function HomePage() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
+  
+  // Use environment variable or fallback to Railway API URL
+  // Ensure URL has no trailing slash to prevent double-slash issues
+  const API_URL = (process.env.NEXT_PUBLIC_API_URL || 'https://multimodale-commerceproductclassificationsys-production.up.railway.app').replace(/\/$/, '');
 
   useEffect(() => {
     fetchStats();
@@ -32,7 +36,12 @@ export default function HomePage() {
 
   const fetchStats = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/stats');
+      const response = await fetch(`${API_URL}/api/stats`);
+      
+      if (!response.ok) {
+        throw new Error(`Server responded with status: ${response.status}`);
+      }
+      
       const data = await response.json();
       setStats(data);
     } catch (error) {
