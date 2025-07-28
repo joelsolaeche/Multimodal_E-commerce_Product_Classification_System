@@ -1,23 +1,18 @@
-# Multi-stage Railway-optimized Dockerfile
-FROM python:3.9-slim as base
+# Multi-stage Railway-optimized Dockerfile with minimal footprint
+FROM python:3.9-slim-bullseye as base
 
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies for ML libraries
-RUN apt-get update && apt-get install -y \
+# Install minimal system dependencies (only what's needed for pandas/numpy/scikit-learn)
+RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
-    pkg-config \
-    libhdf5-dev \
-    zlib1g-dev \
     libjpeg-dev \
-    liblapack-dev \
-    libblas-dev \
-    gfortran \
+    && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# CRITICAL: Copy requirements FIRST for layer caching optimization
-COPY requirements-api.txt /app/requirements.txt
+# CRITICAL: Copy minimal requirements FIRST for layer caching optimization
+COPY requirements-railway.txt /app/requirements.txt
 RUN pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt
 
 # Production stage

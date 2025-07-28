@@ -1,0 +1,18 @@
+# Minimal FastAPI Server Requirements for Railway Deployment
+fastapi==0.115.6
+uvicorn[standard]==0.35.0
+python-multipart==0.0.18
+pydantic==2.10.4
+
+# Core dependencies for mock data
+numpy==1.26.4
+pandas==2.2.3
+scikit-learn==1.3.2
+pillow==10.4.0
+
+# Monitoring and logging
+structlog==23.2.0
+requests==2.32.3  # For health checks
+
+# Note: Removed heavy ML dependencies (tensorflow, torch, transformers)
+# since we're only using mock data in production 
