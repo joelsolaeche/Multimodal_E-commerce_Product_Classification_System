@@ -40,7 +40,7 @@ export default function DemoPage() {
   
   // Use environment variable or fallback to Railway URL
   // Ensure URL has no trailing slash to prevent double-slash issues
-  const API_URL = (process.env.NEXT_PUBLIC_API_URL || 'https://multimodale-commerceproductclassificationsys-production.up.railway.app').replace(/\/$/, '');
+  const API_URL = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, '');
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];

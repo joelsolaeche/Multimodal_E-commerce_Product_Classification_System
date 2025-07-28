@@ -37,7 +37,7 @@ export default function PerformancePage() {
   
   // Use environment variable or fallback to Railway API URL
   // Ensure URL has no trailing slash to prevent double-slash issues
-  const API_URL = (process.env.NEXT_PUBLIC_API_URL || 'https://multimodale-commerceproductclassificationsys-production.up.railway.app').replace(/\/$/, '');
+  const API_URL = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, '');
 
   useEffect(() => {
     fetchPerformance();

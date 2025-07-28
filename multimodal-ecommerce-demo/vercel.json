@@ -7,7 +7,7 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "https://multimodale-commerceproductclassificationsys-production.up.railway.app/api/$1"
+      "destination": "https://multimodale-commerceproductclassificationsys-production-139f.up.railway.app/api/$1"
     }
   ]
 } 
