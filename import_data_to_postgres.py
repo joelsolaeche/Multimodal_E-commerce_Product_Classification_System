@@ -93,50 +93,88 @@ def import_text_embeddings(engine, text_embeddings_file, sample_size):
             file_size_gb = os.path.getsize(text_embeddings_file) / (1024**3)
             logger.info(f"Text embeddings file size: {file_size_gb:.2f} GB")
             
-            # Read the first row to get column names
-            text_embeddings_sample = pd.read_csv(text_embeddings_file, nrows=1)
-            
-            # Check if the file has proper embedding columns
-            embedding_cols = [col for col in text_embeddings_sample.columns if 'embedding' in col.lower()]
-            if not embedding_cols:
-                logger.warning("No embedding columns found in text embeddings file")
-                # Try to detect numeric columns that might be embeddings
-                numeric_cols = text_embeddings_sample.select_dtypes(include=[np.number]).columns.tolist()
-                # Exclude common non-embedding numeric columns
-                numeric_cols = [col for col in numeric_cols if col not in ['sku', 'class_id', 'price']]
-                if len(numeric_cols) > 100:  # Likely embedding columns
-                    logger.info(f"Found {len(numeric_cols)} potential embedding columns")
-                    # Rename columns to have 'embedding_' prefix
-                    column_mapping = {col: f'embedding_{i}' for i, col in enumerate(numeric_cols)}
+            # For text_embeddings_minilm.csv, the file has a specific format
+            # First, try to read with pandas directly
+            try:
+                # Read only a sample if file is large
+                if file_size_gb > 0.8:
+                    logger.warning("Large file detected, sampling data")
+                    text_embeddings_df = pd.read_csv(text_embeddings_file, nrows=sample_size)
                 else:
-                    logger.error("Could not identify embedding columns in the file")
-                    return False
-            
-            if file_size_gb > 0.8:  # Close to Railway's 1GB free tier limit
-                logger.warning("Large file detected, sampling data")
-                # Read only a sample
-                text_embeddings_df = pd.read_csv(text_embeddings_file, nrows=sample_size)
-            else:
-                text_embeddings_df = pd.read_csv(text_embeddings_file)
-            
-            # Rename columns if needed
-            if 'column_mapping' in locals():
-                text_embeddings_df = text_embeddings_df.rename(columns=column_mapping)
-            
-            # Ensure 'sku' column exists
-            if 'sku' not in text_embeddings_df.columns:
-                logger.warning("No 'sku' column found in text embeddings, adding index as sku")
-                text_embeddings_df['sku'] = [f'EMBEDDING{i:06d}' for i in range(len(text_embeddings_df))]
-            
-            # Clean up data for SQL import
-            for col in text_embeddings_df.columns:
-                if text_embeddings_df[col].dtype == object:
-                    text_embeddings_df[col] = text_embeddings_df[col].fillna('')
-            
-            logger.info(f"Importing {len(text_embeddings_df)} text embeddings to PostgreSQL")
-            text_embeddings_df.to_sql('text_embeddings', engine, if_exists='replace', index=False)
-            logger.info("Text embeddings import completed")
-            return True
+                    text_embeddings_df = pd.read_csv(text_embeddings_file)
+                
+                logger.info(f"Successfully read text embeddings file with shape: {text_embeddings_df.shape}")
+                
+                # Check if we have the expected columns
+                if 'embeddings' in text_embeddings_df.columns:
+                    logger.info("Found 'embeddings' column, need to parse it")
+                    
+                    # The embeddings column might be a string representation of a list
+                    # We need to parse it into separate columns
+                    try:
+                        # Sample the first row to see the format
+                        sample_embedding = text_embeddings_df['embeddings'].iloc[0]
+                        logger.info(f"Sample embedding format: {type(sample_embedding)}")
+                        
+                        # If it's a string representation of a list, parse it
+                        if isinstance(sample_embedding, str):
+                            logger.info("Parsing embeddings from string format")
+                            
+                            # Function to convert string representation to list
+                            def parse_embedding(embedding_str):
+                                try:
+                                    # Remove brackets and split by comma
+                                    values = embedding_str.strip('[]').split(',')
+                                    return [float(v.strip()) for v in values]
+                                except:
+                                    return []
+                            
+                            # Apply parsing to the embeddings column
+                            embeddings_lists = text_embeddings_df['embeddings'].apply(parse_embedding)
+                            
+                            # Get the max length of embeddings
+                            max_len = max(len(e) for e in embeddings_lists if e)
+                            logger.info(f"Max embedding length: {max_len}")
+                            
+                            # Create separate columns for each embedding dimension
+                            for i in range(max_len):
+                                text_embeddings_df[f'embedding_{i}'] = embeddings_lists.apply(
+                                    lambda x: x[i] if i < len(x) else 0.0
+                                )
+                            
+                            # Drop the original embeddings column
+                            text_embeddings_df = text_embeddings_df.drop(columns=['embeddings'])
+                    except Exception as e:
+                        logger.error(f"Error parsing embeddings column: {str(e)}")
+                
+                # Ensure 'sku' column exists
+                if 'sku' not in text_embeddings_df.columns:
+                    logger.warning("No 'sku' column found in text embeddings, adding index as sku")
+                    text_embeddings_df['sku'] = [f'EMBEDDING{i:06d}' for i in range(len(text_embeddings_df))]
+                
+                # Clean up data for SQL import
+                for col in text_embeddings_df.columns:
+                    if text_embeddings_df[col].dtype == object:
+                        text_embeddings_df[col] = text_embeddings_df[col].fillna('')
+                
+                logger.info(f"Importing {len(text_embeddings_df)} text embeddings to PostgreSQL")
+                
+                # Create a subset with just sku and embedding columns to reduce size
+                embedding_cols = [col for col in text_embeddings_df.columns if 'embedding_' in col or col == 'sku']
+                if len(embedding_cols) > 1:  # At least sku and one embedding column
+                    text_embeddings_subset = text_embeddings_df[embedding_cols]
+                    logger.info(f"Created subset with {len(embedding_cols)} columns for import")
+                    text_embeddings_subset.to_sql('text_embeddings', engine, if_exists='replace', index=False)
+                else:
+                    logger.warning("No embedding columns found, attempting direct import")
+                    text_embeddings_df.to_sql('text_embeddings', engine, if_exists='replace', index=False)
+                
+                logger.info("Text embeddings import completed")
+                return True
+                
+            except Exception as e:
+                logger.error(f"Error reading text embeddings file with pandas: {str(e)}")
+                return False
         else:
             logger.warning(f"Text embeddings file not found: {text_embeddings_file}")
             return False
@@ -154,50 +192,47 @@ def import_vision_embeddings(engine, vision_embeddings_file, sample_size):
             file_size_gb = os.path.getsize(vision_embeddings_file) / (1024**3)
             logger.info(f"Vision embeddings file size: {file_size_gb:.2f} GB")
             
-            # Read the first row to get column names
-            vision_embeddings_sample = pd.read_csv(vision_embeddings_file, nrows=1)
-            
-            # Check if the file has proper feature columns
-            feature_cols = [col for col in vision_embeddings_sample.columns if 'feature' in col.lower()]
-            if not feature_cols:
-                logger.warning("No feature columns found in vision embeddings file")
-                # Try to detect numeric columns that might be embeddings
-                numeric_cols = vision_embeddings_sample.select_dtypes(include=[np.number]).columns.tolist()
-                # Exclude common non-embedding numeric columns
-                numeric_cols = [col for col in numeric_cols if col not in ['sku', 'class_id', 'price']]
-                if len(numeric_cols) > 100:  # Likely embedding columns
-                    logger.info(f"Found {len(numeric_cols)} potential feature columns")
-                    # Rename columns to have 'feature_' prefix
-                    column_mapping = {col: f'feature_{i}' for i, col in enumerate(numeric_cols)}
+            # For Embeddings_resnet50.csv, the file has numeric columns with names 0, 1, 2, etc.
+            try:
+                # Read only a sample if file is large
+                if file_size_gb > 0.8:
+                    logger.warning("Large file detected, sampling data")
+                    vision_embeddings_df = pd.read_csv(vision_embeddings_file, nrows=sample_size)
                 else:
-                    logger.error("Could not identify feature columns in the file")
-                    return False
-            
-            if file_size_gb > 0.8:  # Close to Railway's 1GB free tier limit
-                logger.warning("Large file detected, sampling data")
-                # Read only a sample
-                vision_embeddings_df = pd.read_csv(vision_embeddings_file, nrows=sample_size)
-            else:
-                vision_embeddings_df = pd.read_csv(vision_embeddings_file)
-            
-            # Rename columns if needed
-            if 'column_mapping' in locals():
-                vision_embeddings_df = vision_embeddings_df.rename(columns=column_mapping)
-            
-            # Ensure 'sku' column exists
-            if 'sku' not in vision_embeddings_df.columns:
-                logger.warning("No 'sku' column found in vision embeddings, adding index as sku")
-                vision_embeddings_df['sku'] = [f'EMBEDDING{i:06d}' for i in range(len(vision_embeddings_df))]
-            
-            # Clean up data for SQL import
-            for col in vision_embeddings_df.columns:
-                if vision_embeddings_df[col].dtype == object:
-                    vision_embeddings_df[col] = vision_embeddings_df[col].fillna('')
-            
-            logger.info(f"Importing {len(vision_embeddings_df)} vision embeddings to PostgreSQL")
-            vision_embeddings_df.to_sql('vision_embeddings', engine, if_exists='replace', index=False)
-            logger.info("Vision embeddings import completed")
-            return True
+                    vision_embeddings_df = pd.read_csv(vision_embeddings_file)
+                
+                logger.info(f"Successfully read vision embeddings file with shape: {vision_embeddings_df.shape}")
+                
+                # Rename numeric columns to feature_X format
+                numeric_cols = [col for col in vision_embeddings_df.columns if str(col).isdigit()]
+                if numeric_cols:
+                    logger.info(f"Found {len(numeric_cols)} numeric columns, renaming to feature_X format")
+                    rename_dict = {col: f'feature_{col}' for col in numeric_cols}
+                    vision_embeddings_df = vision_embeddings_df.rename(columns=rename_dict)
+                
+                # Check if we have an image name column that can be used as SKU
+                if 'ImageName' in vision_embeddings_df.columns:
+                    logger.info("Found 'ImageName' column, using as SKU")
+                    vision_embeddings_df = vision_embeddings_df.rename(columns={'ImageName': 'sku'})
+                
+                # Ensure 'sku' column exists
+                if 'sku' not in vision_embeddings_df.columns:
+                    logger.warning("No 'sku' column found in vision embeddings, adding index as sku")
+                    vision_embeddings_df['sku'] = [f'VISION{i:06d}' for i in range(len(vision_embeddings_df))]
+                
+                # Clean up data for SQL import
+                for col in vision_embeddings_df.columns:
+                    if vision_embeddings_df[col].dtype == object:
+                        vision_embeddings_df[col] = vision_embeddings_df[col].fillna('')
+                
+                logger.info(f"Importing {len(vision_embeddings_df)} vision embeddings to PostgreSQL")
+                vision_embeddings_df.to_sql('vision_embeddings', engine, if_exists='replace', index=False)
+                logger.info("Vision embeddings import completed")
+                return True
+                
+            except Exception as e:
+                logger.error(f"Error reading vision embeddings file with pandas: {str(e)}")
+                return False
         else:
             logger.warning(f"Vision embeddings file not found: {vision_embeddings_file}")
             return False
@@ -214,11 +249,21 @@ def create_indexes(engine):
             conn.execute(text("CREATE INDEX IF NOT EXISTS idx_products_sku ON products (sku)"))
             conn.execute(text("CREATE INDEX IF NOT EXISTS idx_products_class_id ON products (class_id)"))
             
-            # Index on text_embeddings table
-            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_text_embeddings_sku ON text_embeddings (sku)"))
+            # Check if text_embeddings table exists before creating index
+            try:
+                conn.execute(text("SELECT 1 FROM text_embeddings LIMIT 1"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS idx_text_embeddings_sku ON text_embeddings (sku)"))
+                logger.info("Created index on text_embeddings.sku")
+            except Exception as e:
+                logger.warning(f"Could not create index on text_embeddings: {str(e)}")
             
-            # Index on vision_embeddings table
-            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_vision_embeddings_sku ON vision_embeddings (sku)"))
+            # Check if vision_embeddings table exists before creating index
+            try:
+                conn.execute(text("SELECT 1 FROM vision_embeddings LIMIT 1"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS idx_vision_embeddings_sku ON vision_embeddings (sku)"))
+                logger.info("Created index on vision_embeddings.sku")
+            except Exception as e:
+                logger.warning(f"Could not create index on vision_embeddings: {str(e)}")
             
             conn.commit()
         logger.info("Indexes created successfully")
