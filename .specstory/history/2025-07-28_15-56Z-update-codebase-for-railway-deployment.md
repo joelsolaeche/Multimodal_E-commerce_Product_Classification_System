@@ -1647,7 +1647,29 @@ Yes, that's exactly right! Here's the deployment plan:
      ```
 
 3. **Vercel Frontend Setup**:
-   - Deploy your frontend from the `multimodal-ecommerce-demo` directory to
+   - Deploy your frontend from the `multimodal-ecommerce-demo` directory to Vercel
+   - Make sure to set the API URL environment variable during deployment
+
+This architecture gives you:
+- Scalable API backend on Railway
+- Fast frontend hosting on Vercel
+- Clean separation of concerns
+
+The API is completely self-contained and doesn't require any additional services like Redis or PostgreSQL since it uses in-memory data structures and mock data in production.
+
+Would you like me to help with any specific part of this deployment process?
+
+---
+
+_**User**_
+
+why i get an invalid service message when trying to deploy it?
+
+---
+
+_**Assistant**_
+
+
 
 ---
 
