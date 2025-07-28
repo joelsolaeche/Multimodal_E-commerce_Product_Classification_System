@@ -34,6 +34,9 @@ export default function PerformancePage() {
   const [performance, setPerformance] = useState<ModelPerformance | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedModel, setSelectedModel] = useState<'multimodal' | 'vision' | 'text'>('multimodal');
+  
+  // Use environment variable or fallback to Railway API URL
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://multimodale-commerceproductclassificationsys-production.up.railway.app';
 
   useEffect(() => {
     fetchPerformance();
@@ -41,7 +44,7 @@ export default function PerformancePage() {
 
   const fetchPerformance = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/models/performance');
+      const response = await fetch(`${API_URL}/api/models/performance`);
       const data = await response.json();
       setPerformance(data);
     } catch (error) {

@@ -37,6 +37,9 @@ export default function DemoPage() {
   const [imagePreview, setImagePreview] = useState<string>('');
   const [results, setResults] = useState<ClassificationResult | null>(null);
   const [loading, setLoading] = useState(false);
+  
+  // Use environment variable or fallback to Railway URL
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://multimodale-commerceproductclassificationsys-production.up.railway.app';
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -53,7 +56,7 @@ export default function DemoPage() {
   const classifyText = async () => {
     setLoading(true);
     try {
-      const response = await fetch('http://localhost:8000/api/classify/text', {
+      const response = await fetch(`${API_URL}/api/classify/text`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -62,8 +65,8 @@ export default function DemoPage() {
       });
       const result = await response.json();
       setResults(result);
-    } catch {
-      console.error('Error classifying text');
+    } catch (error) {
+      console.error('Error classifying text', error);
     } finally {
       setLoading(false);
     }
@@ -77,14 +80,14 @@ export default function DemoPage() {
       const formData = new FormData();
       formData.append('file', image);
       
-      const response = await fetch('http://localhost:8000/api/classify/image', {
+      const response = await fetch(`${API_URL}/api/classify/image`, {
         method: 'POST',
         body: formData,
       });
       const result = await response.json();
       setResults(result);
-    } catch {
-      console.error('Error classifying image');
+    } catch (error) {
+      console.error('Error classifying image', error);
     } finally {
       setLoading(false);
     }
@@ -100,7 +103,7 @@ export default function DemoPage() {
         reader.onload = async (e) => {
           payload.image_data = e.target?.result as string;
           
-          const response = await fetch('http://localhost:8000/api/classify/multimodal', {
+          const response = await fetch(`${API_URL}/api/classify/multimodal`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -113,7 +116,7 @@ export default function DemoPage() {
         };
         reader.readAsDataURL(image);
       } else {
-        const response = await fetch('http://localhost:8000/api/classify/multimodal', {
+        const response = await fetch(`${API_URL}/api/classify/multimodal`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -124,8 +127,8 @@ export default function DemoPage() {
         setResults(result);
         setLoading(false);
       }
-    } catch {
-      console.error('Error in multimodal classification');
+    } catch (error) {
+      console.error('Error in multimodal classification', error);
       setLoading(false);
     }
   };
