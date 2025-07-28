@@ -22,6 +22,15 @@ import uvicorn
 from PIL import Image
 from sqlalchemy import create_engine, text
 
+# Import GCS storage module
+try:
+    from gcs_storage import gcs_storage
+    has_gcs = True
+except ImportError:
+    has_gcs = False
+    logger = structlog.get_logger()
+    logger.warning("GCS storage module not available")
+
 # Configure structured logging
 logger = structlog.get_logger()
 
@@ -59,58 +68,135 @@ def load_data():
             not os.path.exists('data/')
         )
         
+        # Check if USE_POSTGRES environment variable is set
+        use_postgres = os.environ.get('USE_POSTGRES', 'false').lower() == 'true'
+        logger.info(f"USE_POSTGRES environment variable: {use_postgres}")
+        
+        # Check if USE_GCS environment variable is set
+        use_gcs = os.environ.get('USE_GCS', 'false').lower() == 'true'
+        logger.info(f"USE_GCS environment variable: {use_gcs}")
+        
         if is_production:
             # Check if DATABASE_URL is available for PostgreSQL
             database_url = os.environ.get('DATABASE_URL')
             
-            if database_url:
+            if database_url and (use_postgres or is_production):
                 logger.info("Production environment with PostgreSQL detected")
                 
                 # Create SQLAlchemy engine
-                db_engine = create_engine(database_url)
-                
                 try:
-                    # Load products from database
-                    logger.info("Loading products from PostgreSQL")
-                    product_data = pd.read_sql("SELECT * FROM products LIMIT 5000", db_engine)
-                    logger.info(f"Loaded {len(product_data)} products from PostgreSQL")
-                    
-                    # Load categories from database
-                    try:
-                        logger.info("Loading categories from PostgreSQL")
-                        categories_df = pd.read_sql("SELECT * FROM categories", db_engine)
-                        categories_data = dict(zip(categories_df['id'], categories_df['name']))
-                        logger.info(f"Loaded {len(categories_data)} categories from PostgreSQL")
-                    except Exception as e:
-                        logger.warning(f"Error loading categories from PostgreSQL: {str(e)}")
-                        # Extract categories from products as fallback
-                        if product_data is not None:
-                            unique_categories = product_data['class_id'].unique()
-                            categories_data = {cat: f"Category {cat}" for cat in unique_categories}
-                            logger.info(f"Created {len(categories_data)} categories from products")
-                    
-                    # Load text embeddings from database
-                    try:
-                        logger.info("Loading text embeddings from PostgreSQL")
-                        text_embeddings_data = pd.read_sql("SELECT * FROM text_embeddings LIMIT 5000", db_engine)
-                        logger.info(f"Loaded {len(text_embeddings_data)} text embeddings from PostgreSQL")
-                    except Exception as e:
-                        logger.warning(f"Error loading text embeddings from PostgreSQL: {str(e)}")
-                        text_embeddings_data = None
-                    
-                    # Load vision embeddings from database
-                    try:
-                        logger.info("Loading vision embeddings from PostgreSQL")
-                        vision_embeddings_data = pd.read_sql("SELECT * FROM vision_embeddings LIMIT 5000", db_engine)
-                        logger.info(f"Loaded {len(vision_embeddings_data)} vision embeddings from PostgreSQL")
-                    except Exception as e:
-                        logger.warning(f"Error loading vision embeddings from PostgreSQL: {str(e)}")
-                        vision_embeddings_data = None
-                        
+                    db_engine = create_engine(database_url)
+                    logger.info("Successfully created database engine")
                 except Exception as e:
-                    logger.error(f"Error loading data from PostgreSQL: {str(e)}")
-                    logger.info("Falling back to mock data")
-                    # Fall back to mock data
+                    logger.error(f"Error creating database engine: {str(e)}")
+                    db_engine = None
+                
+                if db_engine:
+                    try:
+                        # Check available tables
+                        tables_query = "SELECT table_name FROM information_schema.tables WHERE table_schema='public'"
+                        tables = pd.read_sql(tables_query, db_engine)
+                        logger.info(f"Found tables in database: {tables['table_name'].tolist()}")
+                        
+                        # Load products from database
+                        logger.info("Loading products from PostgreSQL")
+                        product_data = pd.read_sql("SELECT * FROM products LIMIT 5000", db_engine)
+                        logger.info(f"Loaded {len(product_data)} products from PostgreSQL")
+                        
+                        # Load categories from database
+                        try:
+                            logger.info("Loading categories from PostgreSQL")
+                            categories_df = pd.read_sql("SELECT * FROM categories", db_engine)
+                            categories_data = dict(zip(categories_df['id'], categories_df['name']))
+                            logger.info(f"Loaded {len(categories_data)} categories from PostgreSQL")
+                        except Exception as e:
+                            logger.warning(f"Error loading categories from PostgreSQL: {str(e)}")
+                            # Extract categories from products as fallback
+                            if product_data is not None:
+                                unique_categories = product_data['class_id'].unique()
+                                categories_data = {cat: f"Category {cat}" for cat in unique_categories}
+                                logger.info(f"Created {len(categories_data)} categories from products")
+                        
+                        # Try loading embeddings from PostgreSQL first
+                        postgres_embeddings_loaded = False
+                        
+                        # Try to load text embeddings from PostgreSQL
+                        if 'text_embeddings' in tables['table_name'].tolist():
+                            try:
+                                logger.info("Loading text embeddings from PostgreSQL")
+                                # Get column info
+                                cols_query = "SELECT column_name FROM information_schema.columns WHERE table_name='text_embeddings'"
+                                cols = pd.read_sql(cols_query, db_engine)
+                                logger.info(f"Text embeddings table has columns: {cols['column_name'].tolist()[:10]}...")
+                                
+                                # Load data
+                                text_embeddings_data = pd.read_sql("SELECT * FROM text_embeddings LIMIT 5000", db_engine)
+                                logger.info(f"Loaded {len(text_embeddings_data)} text embeddings from PostgreSQL")
+                                postgres_embeddings_loaded = True
+                            except Exception as e:
+                                logger.error(f"Error loading text embeddings from PostgreSQL: {str(e)}")
+                                text_embeddings_data = None
+                        
+                        # Try to load vision embeddings from PostgreSQL
+                        if 'vision_embeddings' in tables['table_name'].tolist():
+                            try:
+                                logger.info("Loading vision embeddings from PostgreSQL")
+                                # Get column info
+                                cols_query = "SELECT column_name FROM information_schema.columns WHERE table_name='vision_embeddings'"
+                                cols = pd.read_sql(cols_query, db_engine)
+                                logger.info(f"Vision embeddings table has columns: {cols['column_name'].tolist()[:10]}...")
+                                
+                                # Load data
+                                vision_embeddings_data = pd.read_sql("SELECT * FROM vision_embeddings LIMIT 5000", db_engine)
+                                logger.info(f"Loaded {len(vision_embeddings_data)} vision embeddings from PostgreSQL")
+                                postgres_embeddings_loaded = True
+                            except Exception as e:
+                                logger.error(f"Error loading vision embeddings from PostgreSQL: {str(e)}")
+                                vision_embeddings_data = None
+                        
+                        # If PostgreSQL embeddings failed, try GCS if available and enabled
+                        if (not postgres_embeddings_loaded) and use_gcs and has_gcs and gcs_storage.is_ready():
+                            logger.info("Trying to load embeddings from Google Cloud Storage")
+                            
+                            # Load text embeddings from GCS
+                            if text_embeddings_data is None:
+                                try:
+                                    text_embeddings_file = os.environ.get('GCS_TEXT_EMBEDDINGS_FILE', 'text_embeddings_minilm.csv')
+                                    logger.info(f"Loading text embeddings from GCS: {text_embeddings_file}")
+                                    text_embeddings_data = gcs_storage.load_text_embeddings(
+                                        file_name=text_embeddings_file,
+                                        sample_size=5000
+                                    )
+                                    if text_embeddings_data is not None:
+                                        logger.info(f"Loaded {len(text_embeddings_data)} text embeddings from GCS")
+                                except Exception as e:
+                                    logger.error(f"Error loading text embeddings from GCS: {str(e)}")
+                            
+                            # Load vision embeddings from GCS
+                            if vision_embeddings_data is None:
+                                try:
+                                    vision_embeddings_file = os.environ.get('GCS_VISION_EMBEDDINGS_FILE', 'Embeddings_resnet50.csv')
+                                    logger.info(f"Loading vision embeddings from GCS: {vision_embeddings_file}")
+                                    vision_embeddings_data = gcs_storage.load_vision_embeddings(
+                                        file_name=vision_embeddings_file,
+                                        sample_size=5000
+                                    )
+                                    if vision_embeddings_data is not None:
+                                        logger.info(f"Loaded {len(vision_embeddings_data)} vision embeddings from GCS")
+                                except Exception as e:
+                                    logger.error(f"Error loading vision embeddings from GCS: {str(e)}")
+                        
+                        # If still no embeddings, fall back to mock data
+                        if text_embeddings_data is None and vision_embeddings_data is None:
+                            logger.warning("No embeddings loaded from PostgreSQL or GCS, falling back to mock data")
+                            create_mock_data()
+                    except Exception as e:
+                        logger.error(f"Error loading data from PostgreSQL: {str(e)}")
+                        logger.info("Falling back to mock data")
+                        # Fall back to mock data
+                        create_mock_data()
+                else:
+                    logger.warning("Failed to create database engine, using mock data")
                     create_mock_data()
             else:
                 logger.info("Production environment detected, using mock data (no DATABASE_URL)")
@@ -492,23 +578,46 @@ def health_check():
 
 @app.get("/api/stats")
 async def get_stats():
-    """Get dataset statistics"""
+    """Get API stats and status"""
     if product_data is None:
-        raise HTTPException(status_code=503, detail="Data not loaded")
+        raise HTTPException(status_code=500, detail="Product data not loaded")
     
-    # Get category counts
-    category_counts = product_data['class_id'].value_counts().head(10).to_dict()
+    # Get top categories
+    top_categories = product_data['class_id'].value_counts().to_dict()
+    top_10_categories = {k: top_categories[k] for k in list(top_categories.keys())[:10]}
     
-    # Get sample categories from the loaded data
-    categories = product_data['class_id'].unique()[:20].tolist()
+    # Check if embeddings are available
+    has_embeddings = (text_embeddings_data is not None) or (vision_embeddings_data is not None)
+    
+    # Get sample of categories
+    sample_categories = product_data['class_id'].unique().tolist()
+    
+    # Detailed embeddings status
+    embeddings_status = {
+        "text_embeddings": {
+            "available": text_embeddings_data is not None,
+            "count": len(text_embeddings_data) if text_embeddings_data is not None else 0,
+            "columns": list(text_embeddings_data.columns)[:10] if text_embeddings_data is not None else [],
+            "source": "PostgreSQL" if db_engine is not None else "GCS" if has_gcs and gcs_storage.is_ready() else "Mock"
+        },
+        "vision_embeddings": {
+            "available": vision_embeddings_data is not None,
+            "count": len(vision_embeddings_data) if vision_embeddings_data is not None else 0,
+            "columns": list(vision_embeddings_data.columns)[:10] if vision_embeddings_data is not None else [],
+            "source": "PostgreSQL" if db_engine is not None else "GCS" if has_gcs and gcs_storage.is_ready() else "Mock"
+        },
+        "database_connected": db_engine is not None,
+        "gcs_connected": has_gcs and gcs_storage.is_ready() if has_gcs else False
+    }
     
     return {
         "total_products": len(product_data),
-        "total_categories": len(product_data['class_id'].unique()),
-        "total_images": len([f for f in os.listdir('data/images/') if f.endswith('.jpg')]) if os.path.exists('data/images/') else 49000,
-        "top_categories": category_counts,
-        "sample_categories": categories,
-        "has_embeddings": text_embeddings_data is not None
+        "total_categories": len(categories_data) if categories_data else 0,
+        "total_images": 0,  # We don't store images directly
+        "top_categories": top_10_categories,
+        "sample_categories": sample_categories,
+        "has_embeddings": has_embeddings,
+        "embeddings_status": embeddings_status
     }
 
 @app.get("/api/products")
