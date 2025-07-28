@@ -373,18 +373,52 @@ def find_similar_products_by_image_features(image_embedding: List[float], top_k:
         logger.error(f"Error in vision similarity search: {str(e)}")
         return []
 
-def extract_mock_image_features(image_path_or_data: Any) -> List[float]:
-    """Extract mock features from image (placeholder for actual ResNet50 inference)"""
-    # In a real implementation, you would:
-    # 1. Load ResNet50 model
-    # 2. Preprocess the image (resize, normalize)
-    # 3. Extract features from the last conv layer
-    # 4. Return the feature vector
-    
-    # For now, return a random feature vector that simulates ResNet50 output
-    # This maintains the demo functionality while showing the concept
-    np.random.seed(42)  # For reproducible results
-    mock_features = np.random.rand(2048).tolist()  # ResNet50 feature dimension
+def extract_image_features(image_path_or_data: Any) -> List[float]:
+    """Extract features from image using ResNet50 or fallback to mock features"""
+    try:
+        # Try to import TensorFlow for real feature extraction
+        import tensorflow as tf
+        from tensorflow.keras.applications.resnet50 import ResNet50, preprocess_input
+        from tensorflow.keras.preprocessing import image as keras_image
+        
+        logger.info("Using real ResNet50 for feature extraction")
+        
+        # Load ResNet50 model without top classification layer
+        model = ResNet50(weights='imagenet', include_top=False, pooling='avg')
+        
+        # Process image data
+        if isinstance(image_path_or_data, str) and os.path.exists(image_path_or_data):
+            # Load from file path
+            img = keras_image.load_img(image_path_or_data, target_size=(224, 224))
+        else:
+            # Load from bytes
+            if isinstance(image_path_or_data, bytes):
+                img_data = image_path_or_data
+            else:
+                img_data = image_path_or_data.read() if hasattr(image_path_or_data, 'read') else image_path_or_data
+            
+            img = keras_image.load_img(io.BytesIO(img_data), target_size=(224, 224))
+        
+        # Convert to array and preprocess
+        x = keras_image.img_to_array(img)
+        x = np.expand_dims(x, axis=0)
+        x = preprocess_input(x)
+        
+        # Extract features
+        features = model.predict(x)
+        return features[0].tolist()  # Convert to list for JSON serialization
+        
+    except Exception as e:
+        logger.warning(f"Failed to use real ResNet50, falling back to mock features: {str(e)}")
+        # Fall back to mock features
+        return extract_mock_image_features()
+
+def extract_mock_image_features(image_path_or_data: Any = None) -> List[float]:
+    """Generate mock features that simulate ResNet50 output"""
+    # For reproducible results
+    np.random.seed(42)
+    # ResNet50 feature dimension is 2048
+    mock_features = np.random.rand(2048).tolist()
     return mock_features
 
 @asynccontextmanager
@@ -591,7 +625,7 @@ async def classify_image(file: UploadFile = File(...)):
         
         # Extract image features (mock implementation for demo)
         # In production, this would use actual ResNet50 model inference
-        image_features = extract_mock_image_features(image_data)
+        image_features = extract_image_features(image_data)
         
         # Try vision embeddings similarity first
         similar_products = find_similar_products_by_image_features(image_features, top_k=3)
@@ -692,7 +726,7 @@ async def classify_multimodal(data: Dict[str, Any]):
                     image_bytes = base64.b64decode(image_data)
                 
                 # Extract image features
-                image_features = extract_mock_image_features(image_bytes)
+                image_features = extract_image_features(image_bytes)
                 
                 # Use vision embeddings similarity
                 image_similar = find_similar_products_by_image_features(image_features, top_k=5)

@@ -23,10 +23,7 @@ COPY api_server.py /app/
 COPY src/ /app/src/
 
 # CRITICAL: Create necessary directories for data files
-# In production, we use mock data so we just need to create the directory structure
 RUN mkdir -p /app/data/Raw /app/data/images /app/Embeddings
-# Note: No need to copy data files as we use mock data in production environment
-# The api_server.py is designed to detect Railway and use mock data
 
 # Copy startup script
 COPY start.sh /app/start.sh
@@ -38,6 +35,7 @@ EXPOSE $PORT
 # Set environment variable to prevent Python from buffering output
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app
+ENV USE_POSTGRES=true
 
 # REQUIRED: Health check for monitoring
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \

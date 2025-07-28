@@ -8,4 +8,4 @@ python-multipart==0.0.6
 structlog==23.1.0
 sqlalchemy==2.0.15
 psycopg2-binary==2.9.6
-google-cloud-storage==2.9.0 
+tensorflow-cpu==2.12.0 
